@@ -132,13 +132,14 @@ foreach v of local yearvars {
 
 rename gdp_1 year
 rename gdp_2 percent_growth_per_year
-order country_code_a3 year percent_growth_per_year country_name 
+keep country_code_a3 year percent_growth_per_year country_name 
 sort  country_code_a3 year
 
 keep if year >= 1970 & year <= 2024
 drop if missing(percent_growth_per_year)
 
 label var percent_growth_per_year "GDP annual growth  (%)"
+
 
 
 save "C:\Users\Admin\Documents\Github\EnvironmentalEcon\process\gdp_annual_growth_panel.dta", replace
@@ -159,6 +160,36 @@ merge 1:1 country_code_a3 year using "C:\Users\Admin\Documents\Github\Environmen
 
 save "C:\Users\Admin\Documents\Github\EnvironmentalEcon\process\multigas_gdp_12countries.dta", replace
 
+************************** Stats
+use "C:\Users\Admin\Documents\Github\EnvironmentalEcon\process\multigas_gdp_12countries.dta", clear
+keep if inrange(year,1970,2024)
+encode country_code_a3, gen(country_id)
+
+gen ln_co2 = ln(co2_mt)
+bysort country_code_a3 (year): gen co2_log_growth = (ln_co2 - ln_co2[_n-1]) * 100
+label var co2_log_growth "CO2 log growth (approx % per year)"
+
+*sd growth by country
+bysort country_code_a3: egen sd_co2_growth = sd(co2_log_growth)
+bysort country_code_a3: egen sd_gdpgrowth   = sd(percent_growth_per_year)
+
+
+*volatility
+gen vol_ratio = sd_gdpgrowth / sd_co2_growth
+
+* each country
+bysort country_code_a3: keep if _n==_N
+keep country_code_a3 sd_co2_growth sd_gdpgrowth vol_ratio
+list, sepby(country_code_a3)
+
+save "C:\Users\Admin\Documents\Github\EnvironmentalEcon\final\sd_volatility.dta", replace
+export delimited using "C:\Users\Admin\Documents\Github\EnvironmentalEcon\final\Table2_sd_volatility.csv" , replace
+
+
+
+*******************************************************
+
+
 *Coupling Table (CO2+CH4))
 clear all
 set more off
@@ -175,7 +206,7 @@ capture rename c_group_im24_sh  C_group_IM24_sh
 keep if inlist(Country_code_A3, ///
     "CHN","USA","IND","RUS","JPN","IRN","DEU") ///
  | inlist(Country_code_A3, ///
-    "KOR","IDN","CAN""SAU","GBR")
+    "KOR","IDN","CAN","SAU","GBR")
 
 keep if inrange(year, 1990, 2024)
 encode Country_code_A3, gen(country_id)
@@ -278,8 +309,33 @@ graph export "C:\Users\Admin\Documents\Github\EnvironmentalEcon\Final\Graph\co2_
 graph save "C:\Users\Admin\Documents\Github\EnvironmentalEcon\Final\Graph\co2_ch4_decoupling_combined_2016_2024.gph", replace
 restore
 
+***********Summarise table
+clear all
+set more off
 
-* Graphs - gas growth + GDP growth + Paris line
+* 1. Load merged panel
+use "C:\Users\Admin\Documents\Github\EnvironmentalEcon\process\multigas_gdp_12countries.dta", clear
+
+* keep sample period
+keep if inrange(year,1970,2024)
+
+* Summary statistics (mean, sd, min, max) by country × period
+collect clear
+table country_code_a3 post_paris, ///
+    stat(mean co2_mt) stat(sd co2_mt) stat(min co2_mt) stat(max co2_mt) ///
+    stat(mean percent_growth_per_year) ///
+    stat(sd   percent_growth_per_year) ///
+    stat(min  percent_growth_per_year) ///
+    stat(max  percent_growth_per_year)
+	
+keep country_code_a3 name year post_paris co2_mt ch4_mt n2o_mt percent_growth_per_year
+	
+	
+export delimited using "C:\Users\Admin\Documents\Github\EnvironmentalEcon\final\Table1_emissions_gdp_pre_post.csv" , replace
+
+
+
+********* Graphs - gas growth + GDP growth + Paris line
 
 **** CO2 + GDP growth (dual axis)
 
